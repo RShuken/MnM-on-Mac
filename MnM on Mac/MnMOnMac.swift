@@ -237,7 +237,7 @@ enum MnMOnMac {
 final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private static let updatesURL = URL(string: "https://monstersandmemories.com/updates")!
     private static let masterUserAgreementURL = URL(string: "https://account.monstersandmemories.com/policy/mau")!
-    private static let latestReleaseAPIURL = URL(string: "https://api.github.com/repos/seathasky/MnM-on-Mac/releases/latest")!
+    private static let latestReleaseAPIURL = URL(string: "https://api.github.com/repos/RShuken/MnM-on-Mac/releases/latest")!
     private static let accentColor = NSColor(calibratedRed: 0.94, green: 0.31, blue: 0.035, alpha: 1)
     private static let completedInitialSetupKey = "MnMCompletedInitialSetup"
     private static let hideWelcomeKey = "MnMHideWelcomeExplanation"
@@ -979,7 +979,7 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
                 self.availableAssetURL = release.assets.first(where: {
                     $0.name.lowercased().hasSuffix(".zip") && $0.browserDownloadURL.scheme == "https"
                     && $0.browserDownloadURL.host == "github.com"
-                    && $0.browserDownloadURL.path.hasPrefix("/seathasky/MnM-on-Mac/releases/download/")
+                    && $0.browserDownloadURL.path.hasPrefix("/RShuken/MnM-on-Mac/releases/download/")
                 })?.browserDownloadURL
                 self.availableReleaseURL = release.htmlURL
                 self.versionButton.target = self
@@ -2126,7 +2126,7 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
                     if self.usesOfficialLauncher {
                         if self.lastPatcherFailure != nil {
                             self.compactSetupWindow?.show()
-                        } else if !expectedTermination && !GameRunState.isRunning(.current) {
+                        } else if !expectedTermination && QuitPolicy.mayQuitAutomatically(gameRunning: self.isGameRunning) {
                             NSApp.terminate(nil)
                         }
                     }
@@ -2464,6 +2464,22 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     }
 
     func applicationDidBecomeActive(_ notification: Notification) { refresh() }
+
+    /// The game bridge, or any game session holding the lock.
+    var isGameRunning: Bool { gameProcess?.isRunning == true || GameRunState.isRunning(.current) }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        QuitPolicy.reply(gameRunning: isGameRunning) {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Monsters & Memories is still running"
+            alert.informativeText = "Quitting MnM on Mac now may close the game. Keep playing, or quit anyway?"
+            // First button is the default (Return/Space). Keep it the safe choice.
+            alert.addButton(withTitle: "Keep Playing")
+            alert.addButton(withTitle: "Quit Anyway")
+            return alert.runModal() == .alertSecondButtonReturn
+        } == .now ? .terminateNow : .terminateCancel
+    }
     func applicationWillTerminate(_ notification: Notification) {
         gameModeController.deactivate()
         if let launcher = patcherProcess, launcher.isRunning {
@@ -2472,7 +2488,8 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     }
     func windowWillClose(_ notification: Notification) {
         if let closing = notification.object as? NSWindow,
-           closing === compactSetupWindow?.window { NSApp.terminate(nil) }
+           closing === compactSetupWindow?.window,
+           QuitPolicy.mayQuitAutomatically(gameRunning: isGameRunning) { NSApp.terminate(nil) }
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         // The visible main window belongs to Wine. Hiding the native setup
