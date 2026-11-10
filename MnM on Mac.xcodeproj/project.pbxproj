@@ -87,6 +87,7 @@
 			membershipExceptions = (
 				AppStorage.swift,
 				GameRunState.swift,
+				GameSettingsSync.swift,
 				NativePatcherInstaller.swift,
 				WineRuntime.swift,
 			);
