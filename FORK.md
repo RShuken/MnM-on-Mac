@@ -23,6 +23,15 @@ Based on upstream 2.0.6. Fixes the game closing mid-play ("The game stopped (cod
   - Layout runs at 2 Hz, and also on WM_SIZE/DPI/display changes. The footer repaints only when the Mac app's state changes.
   - Once-a-minute `bridge stats` lines in `Logs/launcher-startup.log` report ticks, frames, raises and MB copied.
 
+## Memory, heat and reliability (2026-11-10)
+- The official launcher closes 45 s after the game starts (LauncherIdlePolicy). It used 2,976 MB, and system compressed memory dropped 5.67 -> 3.15 GB.
+- Game settings sync across backend prefixes before each launch (GameSettingsSync). A stale copy with background FPS 2 had stalled loads.
+- Default backend is DXMT + MetalFX: ~21 W vs ~28 W for D3DMetal at similar FPS, with the same ~8.7 GB game footprint.
+- The gear menu is a native Windows menu in the footer (the macOS menu dropped clicks). It adds MetalFX Quality: Sharper 1.3x / Balanced 1.5x / Cooler 2.0x.
+- DXMT paces frames at the game's own cap (`d3d11.preferredMaxFrameRate` from GameSettingTargetFramerate).
+- Orphaned Wine processes from earlier sessions are cleaned up at startup (WineOrphans).
+- A notification at game start names apps holding more than 2 GB (MemoryHeadsUp).
+
 ## Tests
 ```sh
 T=$(mktemp -d)
@@ -30,6 +39,8 @@ for c in test_launcher_fit test_heartbeat_policy test_loader_address; do
   clang -o $T/$c LauncherCompatibility/$c.c && $T/$c; done
 swiftc -o $T/hb "MnM on Mac/LauncherHeartbeat.swift" LauncherCompatibility/test_launcher_heartbeat.swift && $T/hb
 swiftc -o $T/qp "MnM on Mac/QuitPolicy.swift" LauncherCompatibility/test_quit_policy.swift && $T/qp
+for t in LauncherIdlePolicy:launcher_idle_policy GameSettingsSync:game_settings_sync WineOrphans:wine_orphans MemoryHeadsUp:memory_headsup; do
+  swiftc -o $T/x "MnM on Mac/${t%%:*}.swift" LauncherCompatibility/test_${t##*:}.swift && $T/x; done
 ```
 
 ## Building

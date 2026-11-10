@@ -11,6 +11,13 @@ enum GameSettingsSync {
         prefix.appendingPathComponent("drive_c/users/\(user)/AppData/LocalLow/Niche Worlds Cult/Monsters and Memories/settings.json")
     }
 
+    /// The game's own FPS cap (GameSettingTargetFramerate), if its settings say.
+    static func targetFramerate(in prefix: URL, user: String = NSUserName()) -> Int? {
+        guard let data = try? Data(contentsOf: settingsFile(in: prefix, user: user)),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return (object["GameSettingTargetFramerate"] as? NSNumber)?.intValue
+    }
+
     /// Copies the newest valid settings.json among `prefixes` into `target`.
     /// Returns the prefix it copied from, or nil if `target` was already current.
     @discardableResult

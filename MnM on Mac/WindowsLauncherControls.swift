@@ -15,6 +15,18 @@ final class WindowsLauncherControls {
         case d3dMetal = "graphics:d3dmetal"
         case dxmt = "graphics:metal"
         case dxvk = "graphics:dxvk"
+        // Footer gear menu (a native Windows menu inside the launcher; the macOS
+        // NSMenu it replaces dropped clicks while Wine's window was frontmost).
+        case toggleMetalFX = "toggle:metalfx"
+        case toggleGameMode = "toggle:gamemode"
+        case toggleMSync = "toggle:msync"
+        case toggleHUD = "toggle:hud"
+        case toggleTerminalLog = "toggle:terminal"
+        case metalFXSharper = "metalfx-scale:1.3"
+        case metalFXBalanced = "metalfx-scale:1.5"
+        case metalFXCooler = "metalfx-scale:2.0"
+        case scaleAuto = "scale:0", scale60 = "scale:60", scale70 = "scale:70", scale80 = "scale:80"
+        case scale90 = "scale:90", scale100 = "scale:100", scale125 = "scale:125"
     }
     let gameChannel: GameSessionChannel
     let directory: URL
@@ -32,7 +44,7 @@ final class WindowsLauncherControls {
         heartbeat.start()
     }
 
-    func writeState(version: String, backend: GraphicsBackend, busy: Bool, updateAvailable: Bool, launcherScale: Int = 0) throws {
+    func writeState(version: String, backend: GraphicsBackend, busy: Bool, updateAvailable: Bool, launcherScale: Int = 0, options: String = "") throws {
         guard version.count <= 24, version.allSatisfy({ $0.isNumber || $0 == "." }) else { return }
         let scale = [0, 60, 70, 80, 90, 100, 125].contains(launcherScale) ? launcherScale : 0
         // Fit to native usable bounds, converted to the launcher's locked 2x
@@ -43,7 +55,9 @@ final class WindowsLauncherControls {
             let frame = screen.visibleFrame
             return "work\(index)=\(Int(frame.minX * 2)),\(Int((top - frame.maxY) * 2)),\(Int(frame.width * 2)),\(Int(frame.height * 2))\n"
         }.joined()
-        let state = "version=\(version)\nbackend=\(backend.rawValue)\nbusy=\(busy ? 1 : 0)\nupdate=\(updateAvailable ? 1 : 0)\nscale=\(scale)\n" + workAreas
+        // Gear menu values, e.g. "metalfx:1,mfxscale:15,gamemode:1". Only [a-z0-9:,] reaches the footer.
+        let safeOptions = options.count <= 200 && options.allSatisfy({ $0.isASCII && ($0.isLowercase || $0.isNumber || $0 == ":" || $0 == ",") }) ? options : ""
+        let state = "version=\(version)\nbackend=\(backend.rawValue)\nbusy=\(busy ? 1 : 0)\nupdate=\(updateAvailable ? 1 : 0)\nscale=\(scale)\noptions=\(safeOptions)\n" + workAreas
         guard state != lastState else { return }
         let file = directory.appendingPathComponent("state.txt")
         try Data(state.utf8).write(to: file, options: .atomic)

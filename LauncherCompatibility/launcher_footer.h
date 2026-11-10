@@ -10,6 +10,14 @@ static WCHAR footer_controls[32768];
 static HFONT footer_font, footer_version_font;
 static BOOL footer_busy, footer_update_available;
 static RECT footer_work_areas[16];
+/* Gear menu values from the Mac app's state (see WindowsLauncherControls.writeState). */
+static int footer_opt_metalfx, footer_opt_mfxscale=15, footer_opt_gamemode, footer_opt_gamemode_ok, footer_opt_msync=1, footer_opt_hud, footer_opt_terminal;
+static int footer_option(const char *options,const char *key,int fallback){
+    char needle[32];snprintf(needle,sizeof(needle),"%s:",key);
+    const char *at=options;size_t n=strlen(needle);
+    while((at=strstr(at,needle))){ if(at==options || at[-1]==','){int v;if(sscanf(at+n,"%d",&v)==1)return v;} at+=n; }
+    return fallback;
+}
 static int footer_work_count;
 static BOOL footer_state_changed=TRUE;
 static void footer_read_state(void) {
@@ -34,6 +42,14 @@ static void footer_read_state(void) {
     footer_update_available=strstr(data,"update=1\n")!=NULL;
     entry=strstr(data,"scale=");int scale;
     if(entry && sscanf(entry,"scale=%d",&scale)==1 && (scale==0 || scale==60 || scale==70 || scale==80 || scale==90 || scale==100 || scale==125))scale_requested=scale;
+    entry=strstr(data,"\noptions=");
+    if(entry) {
+        char options[256]={0};sscanf(entry+9,"%255[a-z0-9:,]",options);
+        footer_opt_metalfx=footer_option(options,"metalfx",0);footer_opt_mfxscale=footer_option(options,"mfxscale",15);
+        footer_opt_gamemode=footer_option(options,"gamemode",0);footer_opt_gamemode_ok=footer_option(options,"gamemodeok",0);
+        footer_opt_msync=footer_option(options,"msync",1);footer_opt_hud=footer_option(options,"hud",0);
+        footer_opt_terminal=footer_option(options,"terminal",0);
+    }
     footer_work_count=0;
     for(int i=0;i<16;i++) {
         char key[24];snprintf(key,sizeof(key),"\nwork%d=",i);entry=strstr(data,key);
@@ -191,7 +207,40 @@ static LRESULT CALLBACK footer_proc(HWND window,UINT message,WPARAM w,LPARAM l) 
             DestroyMenu(menu);
             PostMessageW(footer_root,WM_NULL,0,0);
             if(selected)footer_command(selected==1?"graphics:d3dmetal":selected==2?"graphics:metal":"graphics:dxvk");
-        } else if(y<46 && x>=360 && x<410)footer_command("options");
+        } else if(y<46 && x>=360 && x<410) {
+            // Native menu, like the Graphics dropdown. The macOS menu it replaces was
+            // shown by a background app and could drop the click that picked an item.
+            SetForegroundWindow(footer_root);
+            HMENU menu=CreatePopupMenu(),scale=CreatePopupMenu(),quality=CreatePopupMenu();
+            static const int scales[7]={0,60,70,80,90,100,125};
+            for(int i=0;i<7;i++){WCHAR label[32];if(scales[i])swprintf(label,32,L"%d%%",scales[i]);else wcscpy(label,L"Automatic (Fit Screen)");
+                AppendMenuW(scale,MF_STRING|(scale_requested==scales[i]?MF_CHECKED:0),100+i,label);}
+            AppendMenuW(menu,MF_POPUP,(UINT_PTR)scale,L"Launcher Scale");
+            AppendMenuW(menu,MF_SEPARATOR,0,NULL);
+            BOOL dxmt=!wcscmp(footer_backend,L"metal");
+            if(dxmt){
+                AppendMenuW(menu,MF_STRING|(footer_opt_metalfx?MF_CHECKED:0),10,L"MetalFX Upscaling");
+                AppendMenuW(quality,MF_STRING|(footer_opt_mfxscale==13?MF_CHECKED:0),20,L"Sharper (1.3\u00d7)");
+                AppendMenuW(quality,MF_STRING|(footer_opt_mfxscale==15?MF_CHECKED:0),21,L"Balanced (1.5\u00d7)");
+                AppendMenuW(quality,MF_STRING|(footer_opt_mfxscale==20?MF_CHECKED:0),22,L"Cooler (2.0\u00d7)");
+                AppendMenuW(menu,MF_POPUP|(footer_opt_metalfx?0:MF_GRAYED),(UINT_PTR)quality,L"MetalFX Quality");
+            }
+            AppendMenuW(menu,MF_STRING|(footer_opt_gamemode?MF_CHECKED:0)|(footer_opt_gamemode_ok?0:MF_GRAYED),11,L"Game Mode");
+            AppendMenuW(menu,MF_STRING|(footer_opt_msync?MF_CHECKED:0),12,L"MSync (Recommended)");
+            AppendMenuW(menu,MF_STRING|(footer_opt_hud?MF_CHECKED:0),13,dxmt?L"Metal Performance HUD":L"Performance HUD");
+            AppendMenuW(menu,MF_SEPARATOR,0,NULL);
+            AppendMenuW(menu,MF_STRING|(footer_opt_terminal?MF_CHECKED:0),14,L"Terminal Log");
+            POINT point={MulDiv(360,footer_dpi,96),MulDiv(42,footer_dpi,96)};ClientToScreen(window,&point);
+            UINT selected=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_NONOTIFY,point.x,point.y,0,window,NULL);
+            DestroyMenu(menu);  /* also destroys the attached submenus */
+            PostMessageW(footer_root,WM_NULL,0,0);
+            static const char *scale_commands[7]={"scale:0","scale:60","scale:70","scale:80","scale:90","scale:100","scale:125"};
+            const char *command=selected==10?"toggle:metalfx":selected==11?"toggle:gamemode":selected==12?"toggle:msync":
+                selected==13?"toggle:hud":selected==14?"toggle:terminal":selected==20?"metalfx-scale:1.3":
+                selected==21?"metalfx-scale:1.5":selected==22?"metalfx-scale:2.0":
+                (selected>=100 && selected<107)?scale_commands[selected-100]:NULL;
+            if(command)footer_command(command);
+        }
         else if(y>=49 && y<80 && x>=bounds.right-396 && x<bounds.right-171)footer_command("discord");
         else if(y>=49 && y<80 && x>=90 && x<220)footer_command("game-folder");
         else if(y>=49 && y<80 && x>=230 && x<350) {
