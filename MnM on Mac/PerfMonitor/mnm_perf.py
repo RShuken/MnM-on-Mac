@@ -27,6 +27,13 @@ FIELDS = ["time", "focused", "game_pid", "game_cpu", "top_thread_cpu", "threads"
 STOP = False
 
 
+def cell(value):
+    """Neutralize spreadsheet formulas: game-log and process text can start with = + - @."""
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + value
+    return value
+
+
 def run(cmd, timeout=10):
     try:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
@@ -341,7 +348,7 @@ def run_session(args):
     ev = csv.writer(evf); ev.writerow(["time", "focused", "game_pid", "game_cpu", "top_thread_cpu", "game_gpu", "loading", "event"])
     def event(text, row):
         ev.writerow([row["time"], row["focused"], row["game_pid"], row["game_cpu"], row["top_thread_cpu"],
-                     row.get("game_gpu", ""), 1 if loading else 0, text]); evf.flush()
+                     row.get("game_gpu", ""), 1 if loading else 0, cell(text)]); evf.flush()
         if not args.quiet: print(f"  EVENT {row['time']} focus={row['focused']} {text}", flush=True)
     last_focus = None
     with open(path, "w", newline="") as f:
@@ -449,7 +456,7 @@ def run_session(args):
                 if snap: row.update(snap)
                 row["snapshot"] = 1
                 next_fps = time.time() + args.fps_every
-            w.writerow(row); f.flush()
+            w.writerow({k: cell(v) for k, v in row.items()}); f.flush()
             if not args.quiet:
                 print(f"{row['time']} focus={row['focused']} cpu={row['game_cpu']} top={row['top_thread_cpu']} "
                       f"gpu={row['gpu_device']}% mem_free={row['mem_free_pct']}% swapin/s={row['swapins_s']}"
