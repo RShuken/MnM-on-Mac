@@ -237,7 +237,7 @@ enum MnMOnMac {
 final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private static let updatesURL = URL(string: "https://monstersandmemories.com/updates")!
     private static let masterUserAgreementURL = URL(string: "https://account.monstersandmemories.com/policy/mau")!
-    private static let latestReleaseAPIURL = URL(string: "https://api.github.com/repos/RShuken/MnM-on-Mac/releases/latest")!
+    private static let latestReleaseAPIURL = URL(string: "https://api.github.com/repos/seathasky/MnM-on-Mac/releases/latest")!
     private static let accentColor = NSColor(calibratedRed: 0.94, green: 0.31, blue: 0.035, alpha: 1)
     private static let completedInitialSetupKey = "MnMCompletedInitialSetup"
     private static let hideWelcomeKey = "MnMHideWelcomeExplanation"
@@ -997,7 +997,7 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
                 self.availableAssetURL = release.assets.first(where: {
                     $0.name.lowercased().hasSuffix(".zip") && $0.browserDownloadURL.scheme == "https"
                     && $0.browserDownloadURL.host == "github.com"
-                    && $0.browserDownloadURL.path.hasPrefix("/RShuken/MnM-on-Mac/releases/download/")
+                    && $0.browserDownloadURL.path.hasPrefix("/seathasky/MnM-on-Mac/releases/download/")
                 })?.browserDownloadURL
                 self.availableReleaseURL = release.htmlURL
                 self.versionButton.target = self
