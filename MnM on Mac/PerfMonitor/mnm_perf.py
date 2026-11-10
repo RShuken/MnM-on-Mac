@@ -14,6 +14,7 @@ sparse, flagged in the CSV, and the trace is deleted right after parsing.
 """
 import argparse, collections, csv, datetime, os, re, shutil, signal, subprocess, sys, tempfile, time
 import xml.etree.ElementTree as ET
+sys.dont_write_bytecode = True  # never leave .pyc files inside the app bundle
 # -I drops the script folder from sys.path; gpu_top.py lives next to this file.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gpu_top  # noqa: E402
@@ -23,7 +24,7 @@ OUT_DIR = os.path.join(SUPPORT, "Logs", "perf")
 FIELDS = ["time", "focused", "game_pid", "game_cpu", "top_thread_cpu", "threads", "game_rss_mb",
           "wineserver_cpu", "windowserver_cpu", "gpu_device", "gpu_renderer", "gpu_tiler", "game_gpu", "windowserver_gpu", "other_gpu", "other_gpu_top", "mem_free_pct",
           "swapins_s", "pageouts_s", "on_battery", "low_power", "cpu_speed_limit", "thermal_pressure", "loading", "net_iface", "vpn", "system_w", "compressed_gb", "swap_used_gb", "game_footprint_mb", "game_graphics_mb", "game_heap_mb",
-          "fps", "skipped_fps", "gpu_usage_xc", "gpu_ms_per_frame", "cmd_buffers", "backend", "variant", "snapshot"]
+          "fps", "frame_ms_avg", "frame_ms_max", "hitches_50", "stutters_100", "skipped_fps", "gpu_usage_xc", "gpu_ms_per_frame", "cmd_buffers", "backend", "variant", "snapshot"]
 STOP = False
 
 
@@ -158,6 +159,55 @@ class PlayerLogTail:
 
 
 STACK_FRAME = re.compile(r"^[\w.`<>$\[\]]+:[\w.`<>$|]+\(")  # Unity stack frames: Namespace.Type:Method(args)
+
+
+class FrameLogTail:
+    """Reads per-second lines from the in-game frame counter (MnMFrameStats.dylib):
+    unix_ms,frames,avg_ms,max_ms,over50ms,over100ms."""
+    def __init__(self, since):
+        self.since = since; self.path = None; self.offset = 0
+
+    def new_lines(self):
+        if self.path is None:
+            files = [os.path.join(OUT_DIR, f) for f in os.listdir(OUT_DIR) if f.startswith("frames-") and f.endswith(".log")]
+            files = [f for f in files if os.path.getmtime(f) >= self.since - 120]
+            if not files: return []
+            self.path = max(files, key=os.path.getmtime)
+        try:
+            with open(self.path) as f:
+                f.seek(self.offset); data = f.read(); self.offset = f.tell()
+        except OSError:
+            return []
+        out = []
+        for line in data.splitlines():
+            p = line.split(",")
+            if len(p) == 6:
+                try: out.append((int(p[0]), int(p[1]), float(p[2]), float(p[3]), int(p[4]), int(p[5])))
+                except ValueError: pass
+        return out
+
+
+class Background:
+    """Runs slow measurements (footprint, top) off the sampling loop, one at a time each."""
+    def __init__(self):
+        import threading
+        self.lock = threading.Lock(); self.busy = set(); self.results = {}
+
+    def submit(self, name, fn):
+        import threading
+        with self.lock:
+            if name in self.busy: return
+            self.busy.add(name)
+        def work():
+            try: value = fn()
+            except Exception: value = None
+            with self.lock:
+                self.results[name] = value; self.busy.discard(name)
+        threading.Thread(target=work, daemon=True).start()
+
+    def take(self, name):
+        with self.lock:
+            return self.results.pop(name, None)
 
 
 def interesting(line):
@@ -352,6 +402,8 @@ def run_session(args):
     power, power_t = power_state(), time.time()
     next_fps = time.time() + 20 if args.fps_every else float("inf")
     tail = PlayerLogTail()
+    frames = FrameLogTail(time.time())
+    bg = Background()
     loading = False
     ev_path = path.replace(".csv", "-events.csv")
     evf = open(ev_path, "w", newline="")
@@ -406,11 +458,14 @@ def run_session(args):
             row["on_battery"], row["low_power"], row["cpu_speed_limit"] = power
             row["thermal_pressure"] = thermal_pressure()
             row["system_w"] = system_power_w()
-            if pid and (pid != fp_pid or now - fp_t >= 300):
-                row["game_footprint_mb"], row["game_graphics_mb"], row["game_heap_mb"] = game_footprint(pid)
-                fp_pid, fp_t = pid, now
+            if pid and (pid != fp_pid or now - fp_t >= 60):
+                bg.submit("footprint", lambda p=pid: game_footprint(p)); fp_pid, fp_t = pid, now
+            fp = bg.take("footprint")
+            if fp: row["game_footprint_mb"], row["game_graphics_mb"], row["game_heap_mb"] = fp
             if pid and (pid != mem_pid or now - mem_t >= 300):
-                hogs, mem_pid, mem_t = memory_hogs(pid), pid, now
+                bg.submit("hogs", lambda p=pid: memory_hogs(p)); mem_pid, mem_t = pid, now
+            hogs = bg.take("hogs")
+            if hogs is not None:
                 if hogs:
                     total = sum(mb for _, mb in hogs) / 1024
                     event(f"MEMORY: other apps are holding {total:.1f} GB while the game runs: "
@@ -458,6 +513,14 @@ def run_session(args):
                 exited = True
             last_pid_seen = pid
             row["loading"] = 1 if loading else 0
+            # Every frame, from the in-game counter: summarize the seconds since the last tick.
+            fl = frames.new_lines() if pid else []
+            if fl:
+                n = sum(x[1] for x in fl)
+                row["fps"] = round(n / len(fl), 1)
+                row["frame_ms_avg"] = round(sum(x[1] * x[2] for x in fl) / max(n, 1), 1)
+                row["frame_ms_max"] = round(max(x[3] for x in fl), 1)
+                row["hitches_50"] = sum(x[4] for x in fl); row["stutters_100"] = sum(x[5] for x in fl)
             # FPS snapshots only while the game is in front; retry soon otherwise.
             if pid and now >= next_fps and row["focused"] != 1:
                 next_fps = now + 15
@@ -553,15 +616,29 @@ def report(args):
     game = [r for r in rows if r.get("game_pid")]
     print(f"Session {os.path.basename(path)}: {len(rows)} samples, {len(game)} with the game running "
           f"({rows[0]['time'] if rows else ''} to {rows[-1]['time'] if rows else ''})\n")
+    # Time by the clock: each sample covers the time until the next one.
+    def clock(t):
+        h, m, sec = (int(x) for x in t.split(":")); return h * 3600 + m * 60 + sec
+    spans = {}
+    for cur, nxt in zip(game, game[1:]):
+        d = (clock(nxt["time"]) - clock(cur["time"])) % 86400
+        if d <= 30: spans[cur["focused"]] = spans.get(cur["focused"], 0) + d
+    mmss = lambda sec: f"{int(sec // 60)} min {int(sec % 60)} s"
     for label, sel in (("IN FOCUS", "1"), ("BACKGROUND", "0")):
         rs = [r for r in game if r["focused"] == sel and r.get("snapshot") != "1"]
-        snaps = [r for r in game if r["focused"] == sel and r.get("snapshot") == "1"]
-        print(f"== {label} ({len(rs)} samples, {len(snaps)} FPS snapshots)")
-        print(f"  FPS presented   {stat(nums(snaps, 'fps'))}")
-        print(f"  FPS skipped     {stat(nums(snaps, 'skipped_fps'))}")
+        play = [r for r in rs if r.get("loading") != "1"]
+        fps = nums(play, "fps")
+        hitches = sum(int(r["hitches_50"]) for r in play if r.get("hitches_50") not in ("", None))
+        stutters = sum(int(r["stutters_100"]) for r in play if r.get("stutters_100") not in ("", None))
+        minutes = max(spans.get(sel, 0) / 60, 1e-9)
+        print(f"== {label}: {mmss(spans.get(sel, 0))}")
+        if fps:
+            low = sorted(fps)[max(0, len(fps) // 100)]
+            print(f"  FPS (every frame) {stat(fps)}  | worst 1%: {low:.1f}")
+            print(f"  frame time ms     {stat(nums(play, 'frame_ms_avg'))}  | slowest frame: {max(nums(play, 'frame_ms_max') or [0]):.0f} ms")
+            print(f"  hitches >50 ms    {hitches} ({hitches / minutes:.1f}/min)   stutters >100 ms: {stutters} ({stutters / minutes:.1f}/min)")
         print(f"  game CPU %      {stat(nums(rs, 'game_cpu'))}")
         print(f"  busiest thread  {stat(nums(rs, 'top_thread_cpu'))}")
-        print(f"  GPU ms/frame    {stat(nums(snaps, 'gpu_ms_per_frame'))}")
         print(f"  GPU device %    {stat(nums(rs, 'gpu_device'))}")
         print(f"  WindowServer %  {stat(nums(rs, 'windowserver_cpu'))}")
         print(f"  GPU: game %     {stat(nums(rs, 'game_gpu'))}")
@@ -580,14 +657,13 @@ def report(args):
             sel = [r for r in game if (r.get("backend", ""), r.get("variant", "")) == (be, va) and r["focused"] == "1"]
             snaps = [r for r in sel if r.get("snapshot") == "1"]
             ticks = [r for r in sel if r.get("snapshot") != "1"]
-            print(f"  {be or '?'} [{va or 'baseline'}]  samples={len(ticks)}")
-            print(f"     FPS {stat(nums(snaps, 'fps'))}")
-            print(f"     GPU ms/frame {stat(nums(snaps, 'gpu_ms_per_frame'))}")
+            print(f"  {be or '?'} [{va or 'baseline'}]")
+            print(f"     FPS {stat(nums([r for r in ticks if r.get('loading') != '1'], 'fps'))}")
             print(f"     game GPU % {stat(nums(ticks, 'game_gpu'))} | busiest thread {stat(nums(ticks, 'top_thread_cpu'))}")
             print(f"     game RSS MB {stat(nums(ticks, 'game_rss_mb'))} | swap-ins/s {stat(nums(ticks, 'swapins_s'))}")
         print()
     focus = [r for r in game if r["focused"] == "1" and r.get("snapshot") != "1"]
-    fps = nums([r for r in game if r["focused"] == "1" and r.get("snapshot") == "1"], "fps")
+    fps = nums([r for r in game if r["focused"] == "1" and r.get("loading") != "1"], "fps")
     tp = nums(game, "thermal_pressure")
     if tp:
         c = collections.Counter(int(x) for x in tp)
@@ -646,9 +722,15 @@ def report(args):
         findings.append("Played on battery for part of the session. Plug in for full performance.")
     if any(r.get("low_power") == "1" for r in game):
         findings.append("Low Power Mode was on. It caps CPU/GPU clocks.")
-    bg = nums([r for r in game if r["focused"] == "0" and r.get("snapshot") == "1"], "fps")
-    if bg and max(bg) > 6:
-        findings.append(f"Background FPS reached {max(bg):.0f}: the out-of-focus limit (5 FPS) isn't being applied.")
+    bg = nums([r for r in game if r["focused"] == "0" and r.get("loading") != "1"], "fps")
+    limit = None
+    evp2 = path.replace(".csv", "-events.csv")
+    if os.path.exists(evp2):
+        for e in csv.DictReader(open(evp2)):
+            m = re.search(r"TargetBackgroundFramerate=(\d+)", e.get("event", ""))
+            if m: limit = int(m.group(1))
+    if bg and limit and sorted(bg)[len(bg) // 2] > limit + 3:
+        findings.append(f"Background FPS ran at about {sorted(bg)[len(bg)//2]:.0f}: the game's background limit ({limit} FPS) isn't being applied.")
     for line in findings or ["Not enough data yet. Play in focus with watch running for a few minutes."]:
         print("  - " + line)
 
@@ -657,7 +739,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     w = sub.add_parser("watch"); w.add_argument("--interval", type=float, default=2.0)
-    w.add_argument("--fps-every", type=float, default=300, help="seconds between FPS snapshots, 0 = off")
+    w.add_argument("--fps-every", type=float, default=0, help="seconds between Instruments FPS snapshots (heavy; 0 = off, the in-game frame counter is used instead)")
     w.add_argument("--fps-seconds", type=int, default=3)
     w.add_argument("--stuck-after", type=float, default=60, help="seconds without zone-load progress before capturing diagnostics")
     w.add_argument("--keep", type=int, default=40, help="game sessions to keep in the log folder")

@@ -10,6 +10,7 @@
 		29837305304C051900712285 /* MnMGameBridge in CopyFiles */ = {isa = PBXBuildFile; fileRef = 298372D2304BFE6000712285 /* MnMGameBridge */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		29837306304C051900712285 /* MnMPatcherGuard in CopyFiles */ = {isa = PBXBuildFile; fileRef = 298372E4304C01D400712285 /* MnMPatcherGuard */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		29837307304C051900712285 /* MnMPlayRedirect.dylib in CopyFiles */ = {isa = PBXBuildFile; fileRef = 298372F3304C034C00712285 /* MnMPlayRedirect.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		4D4E4D4652414D4500000002 /* LauncherNativeAssets/MnMFrameStats.dylib in CopyFiles */ = {isa = PBXBuildFile; fileRef = 4D4E4D4652414D4500000001 /* LauncherNativeAssets/MnMFrameStats.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		4D4E4D524554494E41000002 /* LauncherNativeAssets/MnMLauncherRetina.dylib in CopyFiles */ = {isa = PBXBuildFile; fileRef = 4D4E4D524554494E41000001 /* LauncherNativeAssets/MnMLauncherRetina.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		4D4E4D57494E434F4D500002 /* LauncherCompatibilityAssets in Resources */ = {isa = PBXBuildFile; fileRef = 4D4E4D57494E434F4D500001 /* LauncherCompatibilityAssets */; };
 /* End PBXBuildFile section */
@@ -67,6 +68,7 @@
 				29837306304C051900712285 /* MnMPatcherGuard in CopyFiles */,
 				29837307304C051900712285 /* MnMPlayRedirect.dylib in CopyFiles */,
 				4D4E4D524554494E41000002 /* LauncherNativeAssets/MnMLauncherRetina.dylib in CopyFiles */,
+				4D4E4D4652414D4500000002 /* LauncherNativeAssets/MnMFrameStats.dylib in CopyFiles */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -77,6 +79,7 @@
 		298372D2304BFE6000712285 /* MnMGameBridge */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = MnMGameBridge; sourceTree = BUILT_PRODUCTS_DIR; };
 		298372E4304C01D400712285 /* MnMPatcherGuard */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = MnMPatcherGuard; sourceTree = BUILT_PRODUCTS_DIR; };
 		298372F3304C034C00712285 /* MnMPlayRedirect.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; path = MnMPlayRedirect.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
+		4D4E4D4652414D4500000001 /* LauncherNativeAssets/MnMFrameStats.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; path = LauncherNativeAssets/MnMFrameStats.dylib; sourceTree = "<group>"; };
 		4D4E4D524554494E41000001 /* LauncherNativeAssets/MnMLauncherRetina.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; path = LauncherNativeAssets/MnMLauncherRetina.dylib; sourceTree = "<group>"; };
 		4D4E4D57494E434F4D500001 /* LauncherCompatibilityAssets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = LauncherCompatibilityAssets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -171,6 +174,7 @@
 				298372AB304BFCCF00712285 /* Products */,
 				4D4E4D57494E434F4D500001 /* LauncherCompatibilityAssets */,
 				4D4E4D524554494E41000001 /* LauncherNativeAssets/MnMLauncherRetina.dylib */,
+				4D4E4D4652414D4500000001 /* LauncherNativeAssets/MnMFrameStats.dylib */,
 			);
 			sourceTree = "<group>";
 		};

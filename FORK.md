@@ -33,7 +33,8 @@ Based on upstream 2.0.6. Fixes the game closing mid-play ("The game stopped (cod
 - A notification at game start names apps holding more than 2 GB (MemoryHeadsUp).
 
 ## Performance log (per game session)
-- `MnM on Mac/PerfMonitor/mnm_perf.py` (+ `gpu_top.py`) ship inside the app. With gear menu -> Performance Log on (`MnMPerformanceLog`, default off), the app starts the monitor when the game starts (`watch --once`). It logs to `~/Library/Application Support/MnM on Mac/Logs/perf/`, writes `perf-*-report.txt` when the game exits, keeps the newest 40 sessions, and quits. Nothing runs at login. It needs Xcode or the Command Line Tools (python3, footprint, xctrace).
+- `MnM on Mac/PerfMonitor/mnm_perf.py` (+ `gpu_top.py`) ship inside the app. With gear menu -> Performance Log on (`MnMPerformanceLog`, default off), the app starts the monitor when the game starts (`watch --once`). It logs to `~/Library/Application Support/MnM on Mac/Logs/perf/`, writes `perf-*-report.txt` when the game exits, keeps the newest 40 sessions, and quits. Nothing runs at login. It needs Xcode or the Command Line Tools (python3, footprint).
+- FPS comes from `MnMFrameStats.dylib` (LauncherCompatibility/frame_stats.m), which is injected into the game's Wine process only while Performance Log is on. It timestamps every `-[CAMetalLayer nextDrawable]` (one per frame on DXMT and D3DMetal) and appends one line per second to `Logs/perf/frames-*.log` (unix_ms, frames, avg_ms, max_ms, >50 ms, >100 ms). It links nothing but libobjc/libSystem and hooks only after the process itself loads QuartzCore. Instruments snapshots (400 MB, ~55 s, and they blocked sampling) are no longer used in the loop.
 
 ## Tests
 ```sh

@@ -1248,7 +1248,7 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         let monitor = Process()
         monitor.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
         monitor.arguments = ["-I", script.path, "watch", "--once", "--quiet",
-                             "--interval", "2", "--fps-every", "120", "--stuck-after", "60"]
+                             "--interval", "2", "--stuck-after", "60"]
         monitor.standardInput = FileHandle.nullDevice
         monitor.standardOutput = FileHandle.nullDevice
         monitor.standardError = FileHandle.nullDevice
@@ -1475,6 +1475,15 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             environment["MNM_GRAPHICS_HUD"] = performanceHUDEnabled ? "1" : "0"
             environment["MNM_METALFX_UPSCALING"] = metalFXUpscalingEnabled ? "1" : "0"
             environment["MNM_METALFX_SCALE"] = String(metalFXScale)
+            // Performance Log: time every frame inside the game (MnMFrameStats.dylib) for this session.
+            if performanceLogEnabled, let frameStats = Bundle.main.url(forResource: "MnMFrameStats", withExtension: "dylib") {
+                let logs = WinePaths.current.support.appendingPathComponent("Logs/perf", isDirectory: true)
+                try? FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+                let stamp = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withYear, .withMonth, .withDay, .withTime])
+                    .replacingOccurrences(of: ":", with: "").replacingOccurrences(of: "T", with: "-")
+                environment["MNM_FRAME_STATS_PATH"] = logs.appendingPathComponent("frames-\(stamp).log").path
+                environment["MNM_FRAME_STATS_DYLIB"] = frameStats.path
+            }
             environment["MNM_MSYNC"] = msyncEnabled ? "1" : "0"
             environment["MNM_TERMINAL_LOG"] = terminalLogEnabled ? "1" : "0"
             process.environment = environment

@@ -495,8 +495,19 @@ enum GameSession {
         let process = Process()
         process.executableURL = wine
         process.currentDirectoryURL = game
-        process.environment = WineRuntime.environment(paths: paths, graphicsBackend: graphicsBackend, showHUD: showHUD, msyncEnabled: msyncEnabled,
+        var gameEnvironment = WineRuntime.environment(paths: paths, graphicsBackend: graphicsBackend, showHUD: showHUD, msyncEnabled: msyncEnabled,
                                                       metalFXUpscaling: metalFXUpscaling, metalFXScale: metalFXScale, frameLimit: frameLimit)
+        // Performance Log: per-frame timing inside the game process only (macOS side, never Windows code).
+        let inherited = ProcessInfo.processInfo.environment
+        if let dylib = inherited["MNM_FRAME_STATS_DYLIB"], let stats = inherited["MNM_FRAME_STATS_PATH"],
+           dylib.hasPrefix("/"), stats.hasPrefix("/"), FileManager.default.fileExists(atPath: dylib) {
+            gameEnvironment["DYLD_INSERT_LIBRARIES"] = dylib
+            gameEnvironment["MNM_FRAME_STATS_PATH"] = stats
+        } else {
+            gameEnvironment.removeValue(forKey: "MNM_FRAME_STATS_PATH")
+        }
+        gameEnvironment.removeValue(forKey: "MNM_FRAME_STATS_DYLIB")
+        process.environment = gameEnvironment
         let graphicsAPIArgument = "-force-d3d11"
         // Put Unity's renderer switch immediately after the executable. The game
         // also parses its own --token argument, so keeping the engine flags first
