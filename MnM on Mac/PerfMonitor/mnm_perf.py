@@ -139,7 +139,7 @@ class PlayerLogTail:
         self.path = None; self.inode = None; self.offset = 0
 
     def new_lines(self, backend):
-        path = os.path.join(SUPPORT, PREFIX.get(backend, "Prefix"), LOG_REL.format(user=os.environ.get("USER", "")))
+        path = os.path.join(SUPPORT, PREFIX.get((backend or "").split(" ")[0], "Prefix"), LOG_REL.format(user=os.environ.get("USER", "")))
         try:
             st = os.stat(path)
         except OSError:
@@ -173,7 +173,7 @@ def interesting(line):
 def game_settings(backend):
     """Key graphics/FPS settings from the game's settings.json, as one short string."""
     import json
-    path = os.path.join(SUPPORT, PREFIX.get(backend, "Prefix"), os.path.dirname(LOG_REL.format(user=os.environ.get("USER", ""))), "settings.json")
+    path = os.path.join(SUPPORT, PREFIX.get((backend or "").split(" ")[0], "Prefix"), os.path.dirname(LOG_REL.format(user=os.environ.get("USER", ""))), "settings.json")
     try:
         d = json.load(open(path))
     except Exception:
@@ -270,8 +270,18 @@ def network_path():
 
 
 def graphics_backend():
-    m = re.search(r"MnMGraphicsBackend\s*=\s*(\w+)", run(["defaults", "read", "io.github.seathasky.mnmonmac"]))
-    return {"metal": "DXMT", "d3dmetal": "D3DMetal", "dxvk": "DXVK"}.get(m.group(1).lower(), m.group(1)) if m else ""
+    """Backend label for this session, including MetalFX state on DXMT (e.g. 'DXMT + MetalFX 1.5x')."""
+    prefs = run(["defaults", "read", "io.github.seathasky.mnmonmac"])
+    m = re.search(r"MnMGraphicsBackend\s*=\s*(\w+)", prefs)
+    raw = m.group(1).lower() if m else "metal"   # the fork's default
+    label = {"metal": "DXMT", "d3dmetal": "D3DMetal", "dxvk": "DXVK"}.get(raw, raw)
+    if raw == "metal":
+        fx = re.search(r"MnMMetalFXUpscaling\s*=\s*(\d)", prefs)
+        if fx is None or fx.group(1) == "1":       # on unless explicitly turned off
+            sc = re.search(r"MnMMetalFXScale\s*=\s*\"?([\d.]+)", prefs)
+            scale = float(sc.group(1)) if sc else 1.5
+            label += f" + MetalFX {scale if scale in (1.3, 1.5, 2.0) else 1.5}x"
+    return label
 
 
 def fps_snapshot(pid, seconds=3):
@@ -611,8 +621,9 @@ def report(args):
                         "runs x86 code under Rosetta + Wine. Lower CPU-heavy settings (view distance, shadows, "
                         "player/NPC density) and close other CPU users.")
     if gpu and sorted(gpu)[len(gpu)//2] >= 85:
-        findings.append("GPU-bound (GPU above 85%). Lower resolution or render scale, try MetalFX upscaling in the cog menu, "
-                        "or reduce shadows and effects.")
+        metalfx_on = any("MetalFX" in (r.get("backend") or "") for r in focus)
+        findings.append("GPU-bound (GPU above 85%). " + ("MetalFX is already on; lower in-game effects or close apps that draw on screen."
+                        if metalfx_on else "Turn on MetalFX upscaling (gear menu) or lower in-game effects."))
     if top and gpu and sorted(top)[len(top)//2] < 85 and sorted(gpu)[len(gpu)//2] < 85 and fps and sum(fps)/len(fps) < 28:
         findings.append("Neither the CPU thread nor the GPU is saturated, yet FPS is under 30: suspect frame pacing or "
                         "sync stalls (Wine/wineserver, msync, DXMT present). Try toggling msync, or "
