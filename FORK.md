@@ -15,6 +15,14 @@ Based on upstream 2.0.6. Fixes the game closing mid-play ("The game stopped (cod
 - `LauncherCompatibility/launcher_fit.h` (`launcher_layout_ready`): no layout while the launcher is minimized or 0x0.
 - The updater checks this fork's releases, not upstream's.
 
+## Launcher efficiency (2026-11-10)
+- WebView2 Storage Service crash loop: fixed with `--no-sandbox` for the launcher web view only (see commit 11ceed7).
+- Bridge timer (`MnMWebViewBridge.dll`): idle launcher CPU went from 23.2% to 3.8% (the bare launcher idles at 1.6%).
+  - Frames are event-driven: the browser posts `MnMWebViewFrameReady`, and the host paints at once. After that the timer only does 4 Hz housekeeping instead of polling at 30 Hz.
+  - The footer is re-raised only when a visible window actually overlaps it (it was 1,800 `SetWindowPos` calls a minute).
+  - Layout runs at 2 Hz, and also on WM_SIZE/DPI/display changes. The footer repaints only when the Mac app's state changes.
+  - Once-a-minute `bridge stats` lines in `Logs/launcher-startup.log` report ticks, frames, raises and MB copied.
+
 ## Tests
 ```sh
 T=$(mktemp -d)

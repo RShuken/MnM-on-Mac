@@ -11,6 +11,7 @@ static HFONT footer_font, footer_version_font;
 static BOOL footer_busy, footer_update_available;
 static RECT footer_work_areas[16];
 static int footer_work_count;
+static BOOL footer_state_changed=TRUE;
 static void footer_read_state(void) {
     static ULONGLONG next;ULONGLONG now=GetTickCount64();if(now<next)return;next=now+250;
     if(!footer_controls[0] || !footer_window)return;
@@ -19,6 +20,10 @@ static void footer_read_state(void) {
     if(file==INVALID_HANDLE_VALUE)return;
     char data[2049]={0};DWORD count=0;BOOL read=ReadFile(file,data,2048,&count,NULL);CloseHandle(file);
     if(!read || !count || count>=2048)return;
+    // Unchanged state: nothing to parse, relayout or repaint (this runs 4x a second).
+    static char previous[2049];
+    if(!strcmp(previous,data))return;
+    memcpy(previous,data,sizeof(previous));footer_state_changed=TRUE;
     char backend[32]={0},version[32]={0};char *entry=strstr(data,"backend=");
     if(entry && sscanf(entry,"backend=%31[^\n]",backend)==1 && (!strcmp(backend,"metal") || !strcmp(backend,"d3dmetal") || !strcmp(backend,"dxvk")))
         MultiByteToWideChar(CP_UTF8,0,backend,-1,footer_backend,32);

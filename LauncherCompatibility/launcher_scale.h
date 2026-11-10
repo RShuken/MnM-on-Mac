@@ -23,7 +23,15 @@ static WNDPROC scale_original_proc;
 static void **scale_table(void *object){return *(void***)object;}
 static ULONG scale_addref(void *object){return ((ULONG(WINAPI*)(void*))scale_table(object)[1])(object);}
 static ULONG scale_release(void *object){return ((ULONG(WINAPI*)(void*))scale_table(object)[2])(object);}
+/* Event-driven presentation: the browser posts this after each new frame,
+ * so the host paints at once and its timer only needs a slow housekeeping pace. */
+static UINT bridge_frame_message;
+static volatile LONG bridge_frame_notified;
+static void CALLBACK present(HWND hwnd,UINT msg,UINT_PTR id,DWORD time);
 static LRESULT CALLBACK scale_host_proc(HWND hwnd,UINT message,WPARAM w,LPARAM l) {
+    if(bridge_frame_message && message==bridge_frame_message){InterlockedExchange(&bridge_frame_notified,1);present(hwnd,0,0,0);return 0;}
+    // Layout runs on a slow cadence; geometry changes request it on the next tick.
+    if(message==WM_SIZE || message==WM_DPICHANGED || message==WM_DISPLAYCHANGE || message==WM_EXITSIZEMOVE)footer_state_changed=TRUE;
     if(message==WM_DESTROY && scale_controller){void *controller=scale_controller;scale_controller=NULL;scale_release(controller);}
     return CallWindowProcW(scale_original_proc,hwnd,message,w,l);
 }
