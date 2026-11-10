@@ -332,6 +332,10 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before starting anything: clear Wine processes left behind by earlier sessions.
+        if !GameRunState.isRunning(.current) {
+            WineOrphans.cleanUp(runtimeRoot: WinePaths.current.support.appendingPathComponent("Runtime", isDirectory: true))
+        }
         buildMenu()
         buildWindow()
         do {
@@ -414,7 +418,8 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         guard let controls = officialControls else { return }
         try? controls.writeState(version: installedAppVersion(), backend: selectedGraphicsBackend,
                                  busy: busy || GameRunState.isRunning(.current), updateAvailable: availableReleaseURL != nil,
-                                 launcherScale: UserDefaults.standard.integer(forKey: Self.launcherScaleKey))
+                                 launcherScale: UserDefaults.standard.integer(forKey: Self.launcherScaleKey),
+                                 options: footerOptions)
         guard !officialMenuOpen, NSApp.modalWindow == nil else { return }
         for action in controls.takeActions() {
             switch action {
@@ -440,6 +445,16 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
                 guard !GameRunState.isRunning(.current), availableReleaseURL != nil else { continue }
                 updatePromptShown = false
                 showUpdatePrompt(version: availableAppVersion ?? "update")
+            case .toggleMetalFX: toggleMetalFXUpscaling()
+            case .toggleGameMode: if gameModeController.isAvailable { toggleGameMode() }
+            case .toggleMSync: toggleMSync()
+            case .toggleHUD: togglePerformanceHUD()
+            case .toggleTerminalLog: toggleTerminalLog()
+            case .metalFXSharper, .metalFXBalanced, .metalFXCooler:
+                UserDefaults.standard.set(action == .metalFXSharper ? 1.3 : action == .metalFXCooler ? 2.0 : 1.5, forKey: Self.metalFXScaleKey)
+                if !metalFXUpscalingEnabled, selectedGraphicsBackend == .metal { toggleMetalFXUpscaling() }
+            case .scaleAuto, .scale60, .scale70, .scale80, .scale90, .scale100, .scale125:
+                setLauncherScale(Int(action.rawValue.dropFirst("scale:".count)) ?? 0)
             case .d3dMetal, .dxmt, .dxvk:
                 guard !busy, !GameRunState.isRunning(.current) else { continue }
                 graphicsBackendButton.selectItem(at: action == .d3dMetal ? 0 : action == .dxmt ? 1 : 2)
@@ -1431,6 +1446,7 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             environment["MNM_GRAPHICS_BACKEND"] = selectedGraphicsBackend.rawValue
             environment["MNM_GRAPHICS_HUD"] = performanceHUDEnabled ? "1" : "0"
             environment["MNM_METALFX_UPSCALING"] = metalFXUpscalingEnabled ? "1" : "0"
+            environment["MNM_METALFX_SCALE"] = String(metalFXScale)
             environment["MNM_MSYNC"] = msyncEnabled ? "1" : "0"
             environment["MNM_TERMINAL_LOG"] = terminalLogEnabled ? "1" : "0"
             process.environment = environment
@@ -1464,6 +1480,7 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             gameStartedAt = Date()
             launcherClosedForGame = false
             try process.run()
+            MemoryHeadsUp.notifyIfNeeded()
             if let credentialPipe, let sessionCredential {
                 // Pipe the token only to this child; never put it in its args,
                 // environment, preferences, or the on-disk command channel.
@@ -1718,6 +1735,22 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         UserDefaults.standard.bool(forKey: performanceHUDKey)
     }
 
+    /// MetalFX render scale for DXMT: 1.3 sharper, 1.5 balanced (default), 2.0 cooler.
+    static let metalFXScaleKey = "MnMMetalFXScale"
+    private var metalFXScale: Double {
+        let value = UserDefaults.standard.double(forKey: Self.metalFXScaleKey)
+        return [1.3, 1.5, 2.0].contains(value) ? value : 1.5
+    }
+
+    /// Values the launcher footer's gear menu shows (checkmarks, enabled state).
+    private var footerOptions: String {
+        let flag = { (on: Bool) in on ? "1" : "0" }
+        return ["metalfx:" + flag(metalFXUpscalingEnabled), "mfxscale:\(Int((metalFXScale * 10).rounded()))",
+                "gamemode:" + flag(gameModeEnabled), "gamemodeok:" + flag(gameModeController.isAvailable),
+                "msync:" + flag(msyncEnabled), "hud:" + flag(performanceHUDEnabled),
+                "terminal:" + flag(terminalLogEnabled)].joined(separator: ",")
+    }
+
     private var metalFXUpscalingEnabled: Bool {
         selectedGraphicsBackend == .metal && UserDefaults.standard.bool(forKey: Self.metalFXUpscalingKey)
     }
@@ -1819,9 +1852,11 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         }
     }
 
-    @objc private func changeLauncherScale(_ sender: NSMenuItem) {
-        guard [0, 60, 70, 80, 90, 100, 125].contains(sender.tag) else { return }
-        UserDefaults.standard.set(sender.tag, forKey: Self.launcherScaleKey)
+    @objc private func changeLauncherScale(_ sender: NSMenuItem) { setLauncherScale(sender.tag) }
+
+    private func setLauncherScale(_ value: Int) {
+        guard [0, 60, 70, 80, 90, 100, 125].contains(value) else { return }
+        UserDefaults.standard.set(value, forKey: Self.launcherScaleKey)
         refreshOfficialControls()
     }
 

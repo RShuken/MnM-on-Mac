@@ -125,9 +125,10 @@ enum WineRuntime {
         return "ready"
     }
 
-    static func environment(paths: WinePaths, graphicsBackend: GraphicsBackend = .metal, showHUD: Bool = false, msyncEnabled: Bool = true, metalFXUpscaling: Bool = false) -> [String: String] {
+    static func environment(paths: WinePaths, graphicsBackend: GraphicsBackend = .metal, showHUD: Bool = false, msyncEnabled: Bool = true, metalFXUpscaling: Bool = false,
+                            metalFXScale: Double = 1.5, frameLimit: Int? = nil) -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
-        for key in Array(environment.keys) where key.hasPrefix("WINE") || key.hasPrefix("CX_") || key.hasPrefix("DYLD_") || key.hasPrefix("VK_") || key.hasPrefix("DXMT_") || key.hasPrefix("MTL_") || key.hasPrefix("METAL_") || key.hasPrefix("MNM_PLAY_") || key.hasPrefix("MNM_GRAPHICS_") || key == "MNM_METALFX_UPSCALING" || key == "MNM_MSYNC" || key == "MNM_TERMINAL_LOG" {
+        for key in Array(environment.keys) where key.hasPrefix("WINE") || key.hasPrefix("CX_") || key.hasPrefix("DYLD_") || key.hasPrefix("VK_") || key.hasPrefix("DXMT_") || key.hasPrefix("MTL_") || key.hasPrefix("METAL_") || key.hasPrefix("MNM_PLAY_") || key.hasPrefix("MNM_GRAPHICS_") || key == "MNM_METALFX_UPSCALING" || key == "MNM_METALFX_SCALE" || key == "MNM_MSYNC" || key == "MNM_TERMINAL_LOG" {
             environment.removeValue(forKey: key)
         }
         switch graphicsBackend {
@@ -143,10 +144,18 @@ enum WineRuntime {
         switch graphicsBackend {
         case .metal:
             environment["WINEDLLOVERRIDES"] = "mscoree,mshtml=d;dxgi,d3d11,d3d10core=b"
+            var config: [String] = []
             if metalFXUpscaling {
                 environment["DXMT_METALFX_SPATIAL_SWAPCHAIN"] = "1"
-                environment["DXMT_CONFIG"] = "d3d11.metalSpatialUpscaleFactor=1.5;"
+                let scale = [1.3, 1.5, 2.0].contains(metalFXScale) ? metalFXScale : 1.5
+                config.append("d3d11.metalSpatialUpscaleFactor=\(scale)")
             }
+            // Even frame pacing at the game's own cap: DXMT presents on a steady
+            // cadence instead of in bursts, which reads as smoother at the same FPS.
+            if let frameLimit, (10...240).contains(frameLimit) {
+                config.append("d3d11.preferredMaxFrameRate=\(frameLimit)")
+            }
+            if !config.isEmpty { environment["DXMT_CONFIG"] = config.joined(separator: ";") + ";" }
         case .dxvk, .kosmicKrisp:
             environment["WINEDLLOVERRIDES"] = "mscoree,mshtml=d;dxgi,d3d11,d3d10core=n"
         case .d3dMetal:
@@ -470,6 +479,7 @@ enum GameSession {
         let msyncEnabled = ProcessInfo.processInfo.environment["MNM_MSYNC"] != "0"
         let showHUD = ProcessInfo.processInfo.environment["MNM_GRAPHICS_HUD"] == "1"
         let metalFXUpscaling = graphicsBackend == .metal && ProcessInfo.processInfo.environment["MNM_METALFX_UPSCALING"] == "1"
+        let metalFXScale = Double(ProcessInfo.processInfo.environment["MNM_METALFX_SCALE"] ?? "") ?? 1.5
         try WineRuntime.prepareGraphicsBackend(graphicsBackend, paths: paths)
         // Each backend's prefix keeps its own copy of the game's settings. Carry the
         // newest into this one so switching backends never brings back stale settings.
@@ -481,10 +491,12 @@ enum GameSession {
         case .d3dMetal: target = paths.d3dMetalPrefix
         }
         _ = try? GameSettingsSync.sync(into: target, prefixes: [paths.prefix, paths.dxvkPrefix, paths.kosmicKrispPrefix, paths.d3dMetalPrefix])
+        let frameLimit = GameSettingsSync.targetFramerate(in: target)
         let process = Process()
         process.executableURL = wine
         process.currentDirectoryURL = game
-        process.environment = WineRuntime.environment(paths: paths, graphicsBackend: graphicsBackend, showHUD: showHUD, msyncEnabled: msyncEnabled, metalFXUpscaling: metalFXUpscaling)
+        process.environment = WineRuntime.environment(paths: paths, graphicsBackend: graphicsBackend, showHUD: showHUD, msyncEnabled: msyncEnabled,
+                                                      metalFXUpscaling: metalFXUpscaling, metalFXScale: metalFXScale, frameLimit: frameLimit)
         let graphicsAPIArgument = "-force-d3d11"
         // Put Unity's renderer switch immediately after the executable. The game
         // also parses its own --token argument, so keeping the engine flags first
