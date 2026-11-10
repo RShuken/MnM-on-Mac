@@ -12,3 +12,8 @@ static int launcher_fit_percent(int requested,int width,int height,int footer,
     if(percent>125)percent=125;
     return percent;
 }
+/* Wine reports a 0x0 client for a minimized launcher. Laying it out then
+ * resizes an iconic window every frame and hands WebView2 a negative height. */
+static int launcher_layout_ready(int iconic,long clientw,long clienth) {
+    return !iconic && clientw>0 && clienth>0;
+}

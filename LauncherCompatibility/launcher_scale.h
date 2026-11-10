@@ -109,6 +109,7 @@ static void scale_update(HWND root) {
     MONITORINFO monitor={sizeof(monitor)};
     if(!GetMonitorInfoW(MonitorFromWindow(root,MONITOR_DEFAULTTONEAREST),&monitor))return;
     RECT outer,client;GetWindowRect(root,&outer);real_getclientrect(root,&client);
+    if(!launcher_layout_ready(IsIconic(root),client.right,client.bottom))return;
     // Wine can keep the old monitor work area after a macOS resolution change.
     // Native screen rectangles use the same locked 2x coordinate mapping.
     if(footer_work_count) {
