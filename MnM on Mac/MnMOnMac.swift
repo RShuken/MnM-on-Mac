@@ -294,6 +294,9 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     private var closePatcherAfterInitialSetup = false
     private var patcherReadyChecks = 0
     private var expectedPatcherTermination = false
+    /// Bundled performance monitor (PerfMonitor/mnm_perf.py), started per game session when enabled.
+    private static let performanceLogKey = "MnMPerformanceLog"
+    private var performanceLogProcess: Process?
     /// When the game process started, and whether the launcher was closed for it (LauncherIdlePolicy).
     private var gameStartedAt: Date?
     private var launcherClosedForGame = false
@@ -450,6 +453,7 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             case .toggleMSync: toggleMSync()
             case .toggleHUD: togglePerformanceHUD()
             case .toggleTerminalLog: toggleTerminalLog()
+            case .togglePerformanceLog: UserDefaults.standard.set(!performanceLogEnabled, forKey: Self.performanceLogKey)
             case .metalFXSharper, .metalFXBalanced, .metalFXCooler:
                 UserDefaults.standard.set(action == .metalFXSharper ? 1.3 : action == .metalFXCooler ? 2.0 : 1.5, forKey: Self.metalFXScaleKey)
                 if !metalFXUpscalingEnabled, selectedGraphicsBackend == .metal { toggleMetalFXUpscaling() }
@@ -1230,6 +1234,30 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         WindowsPatcherInstaller().requestClose(launcher)
     }
 
+    /// Starts the bundled monitor for this game session only. It logs to
+    /// Logs/perf, writes a report when the game exits, prunes old sessions and
+    /// quits. Nothing runs at login or while the game isn't running.
+    private func startPerformanceLogIfEnabled() {
+        guard UserDefaults.standard.bool(forKey: Self.performanceLogKey), performanceLogProcess?.isRunning != true,
+              let script = Bundle.main.url(forResource: "mnm_perf", withExtension: "py") else { return }
+        // /usr/bin/python3 is only a stub that prompts to install developer tools unless they exist.
+        let toolsInstalled = ["/Library/Developer/CommandLineTools/usr/bin/python3",
+                              "/Applications/Xcode.app/Contents/Developer/usr/bin/python3"]
+            .contains { FileManager.default.isExecutableFile(atPath: $0) }
+        guard toolsInstalled else { return }
+        let monitor = Process()
+        monitor.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        monitor.arguments = ["-I", script.path, "watch", "--once", "--quiet",
+                             "--interval", "2", "--fps-every", "120", "--stuck-after", "60"]
+        monitor.standardInput = FileHandle.nullDevice
+        monitor.standardOutput = FileHandle.nullDevice
+        monitor.standardError = FileHandle.nullDevice
+        monitor.qualityOfService = .utility
+        if (try? monitor.run()) != nil { performanceLogProcess = monitor }
+    }
+
+    private var performanceLogEnabled: Bool { UserDefaults.standard.bool(forKey: Self.performanceLogKey) }
+
     private func refresh() {
         closeLauncherIfGameTookOver()
         guard !busy, window != nil else { return }
@@ -1481,6 +1509,7 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             launcherClosedForGame = false
             try process.run()
             MemoryHeadsUp.notifyIfNeeded()
+            startPerformanceLogIfEnabled()
             if let credentialPipe, let sessionCredential {
                 // Pipe the token only to this child; never put it in its args,
                 // environment, preferences, or the on-disk command channel.
@@ -1748,7 +1777,7 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         return ["metalfx:" + flag(metalFXUpscalingEnabled), "mfxscale:\(Int((metalFXScale * 10).rounded()))",
                 "gamemode:" + flag(gameModeEnabled), "gamemodeok:" + flag(gameModeController.isAvailable),
                 "msync:" + flag(msyncEnabled), "hud:" + flag(performanceHUDEnabled),
-                "terminal:" + flag(terminalLogEnabled)].joined(separator: ",")
+                "terminal:" + flag(terminalLogEnabled), "perflog:" + flag(performanceLogEnabled)].joined(separator: ",")
     }
 
     private var metalFXUpscalingEnabled: Bool {

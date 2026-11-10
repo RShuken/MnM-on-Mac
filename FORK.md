@@ -32,6 +32,9 @@ Based on upstream 2.0.6. Fixes the game closing mid-play ("The game stopped (cod
 - Orphaned Wine processes from earlier sessions are cleaned up at startup (WineOrphans).
 - A notification at game start names apps holding more than 2 GB (MemoryHeadsUp).
 
+## Performance log (per game session)
+- `MnM on Mac/PerfMonitor/mnm_perf.py` (+ `gpu_top.py`) ship inside the app. With gear menu -> Performance Log on (`MnMPerformanceLog`, default off), the app starts the monitor when the game starts (`watch --once`). It logs to `~/Library/Application Support/MnM on Mac/Logs/perf/`, writes `perf-*-report.txt` when the game exits, keeps the newest 40 sessions, and quits. Nothing runs at login. It needs Xcode or the Command Line Tools (python3, footprint, xctrace).
+
 ## Tests
 ```sh
 T=$(mktemp -d)

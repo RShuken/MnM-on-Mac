@@ -22,6 +22,7 @@ final class WindowsLauncherControls {
         case toggleMSync = "toggle:msync"
         case toggleHUD = "toggle:hud"
         case toggleTerminalLog = "toggle:terminal"
+        case togglePerformanceLog = "toggle:perflog"
         case metalFXSharper = "metalfx-scale:1.3"
         case metalFXBalanced = "metalfx-scale:1.5"
         case metalFXCooler = "metalfx-scale:2.0"
