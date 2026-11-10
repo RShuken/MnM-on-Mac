@@ -33,7 +33,20 @@ struct WindowsPatcherInstaller {
     // The launcher-only Cocoa bridge keeps Wine's 2x mapping stable across
     // resolution changes. Window fitting still uses live macOS usable bounds.
     private var launcherDPI: Int { 192 }
-    private var displayConfiguration: String { "startup=4;retina=locked;dpi=192" }
+    /// WebView2 switches for the official launcher (its private prefix only).
+    ///
+    /// `--no-sandbox`: WebView2 starts its Storage Service inside Chromium's
+    /// Windows "service" sandbox, and that sandbox's setup fails under Wine.
+    /// The process breaks on a CHECK (0x80000003) right after mapping the
+    /// sandbox's shared section, and WebView2 restarts it every ~2 s forever.
+    /// That cost about half a CPU core during play and GBs of crash dumps per hour,
+    /// and it left the launcher with no Local/Session Storage. Measured on the
+    /// real launcher: sandboxed = 31 restarts + 5 dumps in 45 s; with this
+    /// switch = 1 start, 0 dumps. Wine doesn't enforce Windows tokens, so
+    /// the sandbox offered little isolation here anyway.
+    static let webViewArguments = "--disable-gpu --no-sandbox --disable-features=ForceSWDCompWhenDCompFallbackRequired,RemoveRedirectionBitmap"
+    // Includes the WebView2 switches so that changing them re-applies the policy to existing installs.
+    private var displayConfiguration: String { "startup=4;retina=locked;dpi=192;webview=" + Self.webViewArguments }
 
     /// Distinguish first-time setup from a bundled compatibility refresh.
     /// An existing launcher can be updated quietly; this never skips `ready`
@@ -197,7 +210,7 @@ struct WindowsPatcherInstaller {
             if manager.fileExists(atPath: target.path) { try manager.removeItem(at: target) }
             try manager.copyItem(at: assets.appendingPathComponent(name), to: target)
         }
-        let flags = "--disable-gpu --disable-features=ForceSWDCompWhenDCompFallbackRequired,RemoveRedirectionBitmap"
+        let flags = Self.webViewArguments
         for view in ["32", "64"] {
             try WineRuntime.runQuiet(wine, ["reg.exe", "add", "HKLM\\Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments",
                                           "/v", "mnm_launcher.exe", "/t", "REG_SZ", "/d", flags, "/f", "/reg:" + view],
