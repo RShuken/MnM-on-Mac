@@ -471,6 +471,16 @@ enum GameSession {
         let showHUD = ProcessInfo.processInfo.environment["MNM_GRAPHICS_HUD"] == "1"
         let metalFXUpscaling = graphicsBackend == .metal && ProcessInfo.processInfo.environment["MNM_METALFX_UPSCALING"] == "1"
         try WineRuntime.prepareGraphicsBackend(graphicsBackend, paths: paths)
+        // Each backend's prefix keeps its own copy of the game's settings. Carry the
+        // newest into this one so switching backends never brings back stale settings.
+        let target: URL
+        switch graphicsBackend {
+        case .metal: target = paths.prefix
+        case .dxvk: target = paths.dxvkPrefix
+        case .kosmicKrisp: target = paths.kosmicKrispPrefix
+        case .d3dMetal: target = paths.d3dMetalPrefix
+        }
+        _ = try? GameSettingsSync.sync(into: target, prefixes: [paths.prefix, paths.dxvkPrefix, paths.kosmicKrispPrefix, paths.d3dMetalPrefix])
         let process = Process()
         process.executableURL = wine
         process.currentDirectoryURL = game
