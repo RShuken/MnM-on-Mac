@@ -508,7 +508,7 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 390),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable],
                           backing: .buffered, defer: false)
-        window.title = "MnM on Mac (Beta)"
+        window.title = "MnM on Mac (RShuken fork)"
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = NSColor(calibratedWhite: 0.075, alpha: 1)
         window.isReleasedWhenClosed = false
@@ -526,7 +526,7 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         icon.widthAnchor.constraint(equalToConstant: 52).isActive = true
         icon.heightAnchor.constraint(equalToConstant: 52).isActive = true
 
-        let title = NSTextField(labelWithString: "MnM on Mac (Beta)")
+        let title = NSTextField(labelWithString: "MnM on Mac (RShuken fork)")
         title.font = .systemFont(ofSize: 22, weight: .semibold)
         let subtitle = NSTextField(labelWithString: "Community launcher")
         subtitle.font = .systemFont(ofSize: 11)
@@ -2387,6 +2387,9 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         text("About MnM on Mac\n", attributes: heading)
         text("Created by Matthew Centonze. Built to give Mac players a clean, approachable way to install, update, and launch Monsters & Memories through Wine.\n", attributes: secondary)
         link("Matthew Centonze on GitHub", "https://github.com/seathasky")
+        text("\n\nThis build: RShuken fork\n", attributes: heading)
+        text("A fork of MnM on Mac with fixes for mid-play game closes, launcher CPU use and WebView2 crash loops.\n", attributes: secondary)
+        link("RShuken/MnM-on-Mac on GitHub", "https://github.com/RShuken/MnM-on-Mac")
         text("\n\nMonsters & Memories\n", attributes: heading)
         text("The game is created by the official Monsters & Memories development team. Full credit and thanks go to them for bringing its world to life.\n", attributes: secondary)
         link("Official Monsters & Memories Website", "https://monstersandmemories.com/")

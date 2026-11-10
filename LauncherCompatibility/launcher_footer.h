@@ -161,9 +161,10 @@ static LRESULT CALLBACK footer_proc(HWND window,UINT message,WPARAM w,LPARAM l) 
         MoveToEx(dc,331,22,NULL);LineTo(dc,336,27);LineTo(dc,341,22);
         SelectObject(dc,oldpen);DeleteObject(arrow);
         footer_gear(dc,383,25);
-        WCHAR version[64];swprintf(version,64,footer_update_available?L"App Update Available":L"MnM on Mac %ls",footer_version);
+        // This build is the RShuken fork; say so where players sign in.
+        WCHAR version[96];swprintf(version,96,footer_update_available?L"App Update Available":L"MnM on Mac %ls \u00b7 RShuken fork",footer_version);
         SelectObject(dc,footer_version_font);
-        RECT version_bounds={bounds.right-280,10,bounds.right-20,41};
+        RECT version_bounds={bounds.right-560,10,bounds.right-20,41};
         SetTextColor(dc,footer_update_available?RGB(94,200,103):RGB(215,215,215));
         DrawTextW(dc,version,-1,&version_bounds,DT_SINGLELINE|DT_VCENTER|DT_RIGHT|DT_NOPREFIX);
         SelectObject(dc,footer_font);

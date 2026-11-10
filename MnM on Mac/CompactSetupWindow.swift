@@ -12,11 +12,11 @@ final class CompactSetupWindow {
     init(target: AnyObject, retryAction: Selector) {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 300),
                           styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
-        window.title = "MnM on Mac — Setup"
+        window.title = "MnM on Mac (RShuken fork) — Setup"
         window.isReleasedWhenClosed = false
         window.level = .normal
         window.hidesOnDeactivate = false
-        let title = NSTextField(labelWithString: "MnM on Mac")
+        let title = NSTextField(labelWithString: "MnM on Mac · RShuken fork")
         title.font = .systemFont(ofSize: 22, weight: .semibold)
         let subtitle = NSTextField(labelWithString: "Preparing Monsters & Memories for your Mac")
         subtitle.font = .systemFont(ofSize: 12)
