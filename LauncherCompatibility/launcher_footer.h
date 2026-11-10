@@ -5,7 +5,7 @@
 #define FOOTER_HEIGHT 88
 static HWND footer_window, footer_root;
 static UINT footer_dpi=96;
-static WCHAR footer_backend[32]=L"d3dmetal", footer_version[32]=L"2.0.0";
+static WCHAR footer_backend[32]=L"metal", footer_version[32]=L"2.0.0";
 static WCHAR footer_controls[32768];
 static HFONT footer_font, footer_version_font;
 static BOOL footer_busy, footer_update_available;
@@ -155,7 +155,7 @@ static LRESULT CALLBACK footer_proc(HWND window,UINT message,WPARAM w,LPARAM l) 
         HBRUSH field=CreateSolidBrush(RGB(53,53,53));HGDIOBJ oldbrush=SelectObject(dc,field);
         oldpen=SelectObject(dc,GetStockObject(NULL_PEN));RoundRect(dc,90,10,350,41,8,8);
         SelectObject(dc,oldpen);SelectObject(dc,oldbrush);DeleteObject(field);
-        LPCWSTR renderer=!wcscmp(footer_backend,L"metal")?L"DXMT":!wcscmp(footer_backend,L"dxvk")?L"DXVK (Experimental)":L"D3DMetal (Recommended)";
+        LPCWSTR renderer=!wcscmp(footer_backend,L"metal")?L"DXMT (Recommended)":!wcscmp(footer_backend,L"dxvk")?L"DXVK (Experimental)":L"D3DMetal";
         footer_label(dc,renderer,102,13,228,RGB(235,235,235));
         HPEN arrow=CreatePen(PS_SOLID,2,RGB(215,215,215));oldpen=SelectObject(dc,arrow);
         MoveToEx(dc,331,22,NULL);LineTo(dc,336,27);LineTo(dc,341,22);
@@ -183,8 +183,8 @@ static LRESULT CALLBACK footer_proc(HWND window,UINT message,WPARAM w,LPARAM l) 
         if(y<46 && x>=90 && x<350) {
             SetForegroundWindow(footer_root);
             HMENU menu=CreatePopupMenu();
-            AppendMenuW(menu,MF_STRING|(!wcscmp(footer_backend,L"d3dmetal")?MF_CHECKED:0),1,L"D3DMetal (Recommended)");
-            AppendMenuW(menu,MF_STRING|(!wcscmp(footer_backend,L"metal")?MF_CHECKED:0),2,L"DXMT");
+            AppendMenuW(menu,MF_STRING|(!wcscmp(footer_backend,L"d3dmetal")?MF_CHECKED:0),1,L"D3DMetal");
+            AppendMenuW(menu,MF_STRING|(!wcscmp(footer_backend,L"metal")?MF_CHECKED:0),2,L"DXMT (Recommended)");
             AppendMenuW(menu,MF_STRING|(!wcscmp(footer_backend,L"dxvk")?MF_CHECKED:0),3,L"DXVK (Experimental)");
             POINT point={MulDiv(90,footer_dpi,96),MulDiv(42,footer_dpi,96)};ClientToScreen(window,&point);
             UINT selected=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_NONOTIFY,point.x,point.y,0,window,NULL);
