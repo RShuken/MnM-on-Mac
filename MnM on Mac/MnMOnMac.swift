@@ -294,6 +294,9 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     private var closePatcherAfterInitialSetup = false
     private var patcherReadyChecks = 0
     private var expectedPatcherTermination = false
+    /// When the game process started, and whether the launcher was closed for it (LauncherIdlePolicy).
+    private var gameStartedAt: Date?
+    private var launcherClosedForGame = false
     private var lastPatcherFailure: String?
     private var repairAttentionTimer: Timer?
     private var repairAttentionActive = false
@@ -1199,7 +1202,21 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         if let availableReleaseURL { NSWorkspace.shared.open(availableReleaseURL) }
     }
 
+    /// Close the official launcher once the game has taken over (about 2.9 GB of WebView2 under Wine).
+    /// The close is expected, so it isn't reported as a failure, and the app keeps running while the
+    /// game does. When the game exits, the app quits as it does whenever the launcher isn't open.
+    private func closeLauncherIfGameTookOver() {
+        guard usesOfficialLauncher, let launcher = patcherProcess else { return }
+        let runningFor = gameProcess?.isRunning == true ? gameStartedAt.map { Date().timeIntervalSince($0) } : nil
+        guard LauncherIdlePolicy.shouldClose(enabled: LauncherIdlePolicy.enabled, launcherRunning: launcher.isRunning,
+                                             gameRunningFor: runningFor, alreadyClosed: launcherClosedForGame) else { return }
+        launcherClosedForGame = true
+        expectedPatcherTermination = true
+        WindowsPatcherInstaller().requestClose(launcher)
+    }
+
     private func refresh() {
+        closeLauncherIfGameTookOver()
         guard !busy, window != nil else { return }
         setInitialSetupMode(false)
         if let failure = storageFailure {
@@ -1425,6 +1442,7 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
                 DispatchQueue.main.async {
                     guard let self = self, self.gameProcess === finished else { return }
                     self.gameProcess = nil
+                    self.gameStartedAt = nil
                     if let ticket = self.officialGameTicket {
                         try? self.officialControls?.reportGame(ticket, exitCode: finished.terminationStatus)
                         self.officialGameTicket = nil
@@ -1443,6 +1461,8 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
                 }
             }
             gameProcess = process
+            gameStartedAt = Date()
+            launcherClosedForGame = false
             try process.run()
             if let credentialPipe, let sessionCredential {
                 // Pipe the token only to this child; never put it in its args,
