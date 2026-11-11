@@ -601,6 +601,59 @@ def watch(args):
             return
 
 
+def heat_summary(game):
+    """How hot the session started and how long it ran under heavy thermal pressure.
+    A fanless Mac gets hotter over back-to-back sessions, so compare like with like."""
+    th = [int(float(r["thermal_pressure"])) for r in game if r.get("thermal_pressure") not in ("", None)]
+    if not th: return ""
+    start = max(th[:15]) if th[:15] else th[0]
+    heavy = 100 * sum(1 for x in th if x >= 2) // len(th)
+    watts = sorted(float(r["system_w"]) for r in game if r.get("system_w") not in ("", None))
+    note = (f"== Heat: started {THERMAL.get(start, start)}, heavy {heavy}% of the session"
+            + (f", median {watts[len(watts)//2]:.1f} W" if watts else ""))
+    if start >= 2:
+        note += "\n   This session started hot: macOS was already slowing the CPU/GPU, so compare it only with other hot starts."
+    return note
+
+
+def session_summary(path):
+    rows = [r for r in csv.DictReader(open(path)) if r.get("game_pid")]
+    def clock(t): h, m, sec = (int(x) for x in t.split(":")); return h * 3600 + m * 60 + sec
+    focus_s = sum(d for a, b in zip(rows, rows[1:]) for d in [(clock(b["time"]) - clock(a["time"])) % 86400]
+                  if d <= 30 and a["focused"] == "1")
+    play = [r for r in rows if r["focused"] == "1" and r.get("loading") != "1"]
+    num = lambda k, R=play: sorted(float(r[k]) for r in R if r.get(k) not in ("", None))
+    med = lambda v: v[len(v) // 2] if v else float("nan")
+    fps, mins = num("fps"), max(focus_s / 60, 1e-9)
+    th = [int(float(r["thermal_pressure"])) for r in rows if r.get("thermal_pressure") not in ("", None)]
+    return {
+        "session": os.path.basename(path)[5:20], "setup": (rows[-1].get("backend") if rows else "") or "?",
+        "focus": f"{int(focus_s // 60)}m{int(focus_s % 60):02d}s",
+        "fps": med(fps), "low": fps[len(fps) // 100] if fps else float("nan"),
+        "hitch": sum(num("hitches_50")) / mins, "stutter": sum(num("stutters_100")) / mins,
+        "slowest": max(num("frame_ms_max") or [float("nan")]), "main": med(num("top_thread_cpu")),
+        "swap": med(num("swapins_s")), "watts": med(num("system_w", rows)),
+        "start": THERMAL.get(max(th[:15]) if th else -1, "?"), "heavy": 100 * sum(1 for x in th if x >= 2) / max(len(th), 1),
+    }
+
+
+def compare(args):
+    files = args.csv or sorted((os.path.join(OUT_DIR, f) for f in os.listdir(OUT_DIR)
+                                if re.match(r"^perf-\d{8}-\d{6}\.csv$", f)), key=os.path.getmtime)[-2:]
+    cols = [session_summary(f) for f in files]
+    rows = [("Session", "session", "{}"), ("Setup", "setup", "{}"), ("In focus", "focus", "{}"),
+            ("FPS median", "fps", "{:.1f}"), ("Worst 1% FPS", "low", "{:.1f}"), ("Hitches >50ms /min", "hitch", "{:.0f}"),
+            ("Stutters >100ms /min", "stutter", "{:.1f}"), ("Slowest frame ms", "slowest", "{:.0f}"),
+            ("Main thread % (median)", "main", "{:.0f}"), ("Swap-ins/s (median)", "swap", "{:.0f}"),
+            ("Watts (median)", "watts", "{:.1f}"), ("Started", "start", "{}"), ("Heavy thermal %", "heavy", "{:.0f}")]
+    width = max(16, *(len(str(c["setup"])) for c in cols))
+    for name, key, fmt in rows:
+        print(f"{name:24s}" + "".join(f"{fmt.format(c[key]):>{width + 2}s}" for c in cols))
+    starts = {c["start"] for c in cols}
+    if len(starts) > 1:
+        print("\nNote: these sessions started at different heat levels; differences may be heat, not settings.")
+
+
 def latest_csv():
     files = sorted(f for f in os.listdir(OUT_DIR) if f.endswith(".csv")) if os.path.isdir(OUT_DIR) else []
     return os.path.join(OUT_DIR, files[-1]) if files else None
@@ -631,6 +684,8 @@ def report(args):
         d = (clock(nxt["time"]) - clock(cur["time"])) % 86400
         if d <= 30: spans[cur["focused"]] = spans.get(cur["focused"], 0) + d
     mmss = lambda sec: f"{int(sec // 60)} min {int(sec % 60)} s"
+    heat = heat_summary(game)
+    if heat: print(heat + "\n")
     for label, sel in (("IN FOCUS", "1"), ("BACKGROUND", "0")):
         rs = [r for r in game if r["focused"] == sel and r.get("snapshot") != "1"]
         play = [r for r in rs if r.get("loading") != "1"]
@@ -685,12 +740,17 @@ def report(args):
             print(f"  {e['time']} focus={e['focused']} loading={e['loading']} {e['event'][:150]}")
         print()
     # Long-session memory: growth of the game's heap and graphics memory per hour.
+    # Measured from the first sample after the first zone load finished: memory
+    # naturally climbs from ~0 at launch to ~9 GB once the world is loaded.
     for pidv in sorted({r["game_pid"] for r in game}):
+        mine = [r for r in game if r["game_pid"] == pidv]
+        first_loaded = next((i for i in range(1, len(mine)) if mine[i - 1].get("loading") == "1" and mine[i].get("loading") != "1"), None)
+        mine = mine[first_loaded:] if first_loaded is not None else []
         pts = [(r["time"], float(r["game_heap_mb"]), float(r["game_graphics_mb"]), float(r["game_footprint_mb"]))
-               for r in game if r["game_pid"] == pidv and r.get("game_heap_mb") not in ("", None)]
-        if len(pts) >= 3:
-            h = lambda t: sum(int(x) * k for x, k in zip(t.split(":"), (3600, 60, 1)))
-            hrs = (h(pts[-1][0]) - h(pts[0][0])) / 3600 or 1e-9
+               for r in mine if r.get("game_heap_mb") not in ("", None)]
+        h = lambda t: sum(int(x) * k for x, k in zip(t.split(":"), (3600, 60, 1)))
+        if len(pts) >= 3 and (h(pts[-1][0]) - h(pts[0][0])) % 86400 >= 600:
+            hrs = ((h(pts[-1][0]) - h(pts[0][0])) % 86400) / 3600 or 1e-9
             print(f"== Game memory over time (pid {pidv}, {hrs*60:.0f} min): total {pts[0][3]:.0f} -> {pts[-1][3]:.0f} MB, "
                   f"heap {(pts[-1][1]-pts[0][1])/hrs:+.0f} MB/h, graphics {(pts[-1][2]-pts[0][2])/hrs:+.0f} MB/h\n")
             if hrs >= 0.5 and (pts[-1][1] - pts[0][1]) / hrs > 300:
@@ -753,12 +813,14 @@ def main():
     w.add_argument("--once", action="store_true", help="log one game session, then exit (used by MnM on Mac)"); w.add_argument("--quiet", action="store_true")
     s = sub.add_parser("fps"); s.add_argument("--seconds", type=int, default=3)
     r = sub.add_parser("report"); r.add_argument("csv", nargs="?")
+    c = sub.add_parser("compare", help="sessions side by side (default: the last two)"); c.add_argument("csv", nargs="*")
     a = p.parse_args()
     if a.cmd == "watch": watch(a)
     elif a.cmd == "fps":
         pid = game_pid()
         if not pid: sys.exit("The game isn't running.")
         print(fps_snapshot(pid, a.seconds) or "No frame data (is the game window visible?)")
+    elif a.cmd == "compare": compare(a)
     else: report(a)
 
 
