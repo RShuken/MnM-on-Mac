@@ -74,13 +74,21 @@ static void stats_try_hook(void) {
     stats_tick_ns = (double)tb.numer / tb.denom;
     stats_original = (id (*)(id, SEL))method_setImplementation(m, (IMP)stats_next_drawable);
 }
+/* Wine loads QuartzCore on demand (dlopen). Its ObjC classes can register a
+ * moment after the dyld callback, so retry for a while instead of trying once. */
+static void stats_schedule_hook(int attempt) {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, attempt ? 200 * NSEC_PER_MSEC : 0),
+                   dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        stats_try_hook();
+        if (!stats_hooked && attempt < 300) stats_schedule_hook(attempt + 1);   /* up to ~60 s */
+    });
+}
 static void stats_image(const struct mach_header *header, intptr_t slide) {
     const char *name = NULL; Dl_info info;
     if (stats_hooked || !dladdr(header, &info)) return;
     name = info.dli_fname;
     /* ObjC classes aren't registered inside the dyld callback: hook just after. */
-    if (name && strstr(name, "/QuartzCore.framework/"))
-        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{ stats_try_hook(); });
+    if (name && strstr(name, "/QuartzCore.framework/")) stats_schedule_hook(0);
 }
 /* Write the final partial second when the process exits. */
 __attribute__((destructor)) static void stats_finish(void) {

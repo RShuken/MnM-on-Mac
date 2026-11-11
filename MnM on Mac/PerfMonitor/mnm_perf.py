@@ -489,7 +489,11 @@ def run_session(args):
                     recent.append(line); del recent[:-200]
                     text = interesting(line)
                     if not text: continue
-                    if "Start zoning process" in text: loading = True; stuck_reported = False
+                    # A load starts at "enter world" (before the zone server answers) or at a zone change.
+                    if "Start zoning process" in text or text.startswith("Received EnterWorldResponse") \
+                            or "Waiting for Zone Preparation" in text:
+                        if not loading: stuck_reported = False
+                        loading = True; last_step, last_step_t = text, now
                     if loading and text.startswith("[Client][ZONE]"): last_step, last_step_t = text, now
                     event(text, row)
                     if "[Client][ZONE] Done loading" == text: loading = False
