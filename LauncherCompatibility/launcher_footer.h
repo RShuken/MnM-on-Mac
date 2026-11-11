@@ -11,7 +11,7 @@ static HFONT footer_font, footer_version_font;
 static BOOL footer_busy, footer_update_available;
 static RECT footer_work_areas[16];
 /* Gear menu values from the Mac app's state (see WindowsLauncherControls.writeState). */
-static int footer_opt_metalfx, footer_opt_mfxscale=15, footer_opt_gamemode, footer_opt_gamemode_ok, footer_opt_msync=1, footer_opt_hud, footer_opt_terminal, footer_opt_perflog;
+static int footer_opt_metalfx, footer_opt_mfxscale=15, footer_opt_gamemode, footer_opt_gamemode_ok, footer_opt_msync=1, footer_opt_hud, footer_opt_terminal, footer_opt_perflog, footer_opt_workers;
 static int footer_option(const char *options,const char *key,int fallback){
     char needle[32];snprintf(needle,sizeof(needle),"%s:",key);
     const char *at=options;size_t n=strlen(needle);
@@ -48,7 +48,7 @@ static void footer_read_state(void) {
         footer_opt_metalfx=footer_option(options,"metalfx",0);footer_opt_mfxscale=footer_option(options,"mfxscale",15);
         footer_opt_gamemode=footer_option(options,"gamemode",0);footer_opt_gamemode_ok=footer_option(options,"gamemodeok",0);
         footer_opt_msync=footer_option(options,"msync",1);footer_opt_hud=footer_option(options,"hud",0);
-        footer_opt_terminal=footer_option(options,"terminal",0);footer_opt_perflog=footer_option(options,"perflog",0);
+        footer_opt_terminal=footer_option(options,"terminal",0);footer_opt_perflog=footer_option(options,"perflog",0);footer_opt_workers=footer_option(options,"workers",0);
     }
     footer_work_count=0;
     for(int i=0;i<16;i++) {
@@ -211,7 +211,7 @@ static LRESULT CALLBACK footer_proc(HWND window,UINT message,WPARAM w,LPARAM l) 
             // Native menu, like the Graphics dropdown. The macOS menu it replaces was
             // shown by a background app and could drop the click that picked an item.
             SetForegroundWindow(footer_root);
-            HMENU menu=CreatePopupMenu(),scale=CreatePopupMenu(),quality=CreatePopupMenu();
+            HMENU menu=CreatePopupMenu(),scale=CreatePopupMenu(),quality=CreatePopupMenu(),workers=CreatePopupMenu();
             static const int scales[7]={0,60,70,80,90,100,125};
             for(int i=0;i<7;i++){WCHAR label[32];if(scales[i])swprintf(label,32,L"%d%%",scales[i]);else wcscpy(label,L"Automatic (Fit Screen)");
                 AppendMenuW(scale,MF_STRING|(scale_requested==scales[i]?MF_CHECKED:0),100+i,label);}
@@ -225,6 +225,11 @@ static LRESULT CALLBACK footer_proc(HWND window,UINT message,WPARAM w,LPARAM l) 
                 AppendMenuW(quality,MF_STRING|(footer_opt_mfxscale==20?MF_CHECKED:0),22,L"Cooler (2.0\u00d7)");
                 AppendMenuW(menu,MF_POPUP|(footer_opt_metalfx?0:MF_GRAYED),(UINT_PTR)quality,L"MetalFX Quality");
             }
+            AppendMenuW(workers,MF_STRING|(footer_opt_workers==0?MF_CHECKED:0),30,L"Default (Unity: cores \u2212 1)");
+            AppendMenuW(workers,MF_STRING|(footer_opt_workers==4?MF_CHECKED:0),31,L"4");
+            AppendMenuW(workers,MF_STRING|(footer_opt_workers==3?MF_CHECKED:0),32,L"3");
+            AppendMenuW(workers,MF_STRING|(footer_opt_workers==2?MF_CHECKED:0),33,L"2");
+            AppendMenuW(menu,MF_POPUP,(UINT_PTR)workers,L"Game Worker Threads");
             AppendMenuW(menu,MF_STRING|(footer_opt_gamemode?MF_CHECKED:0)|(footer_opt_gamemode_ok?0:MF_GRAYED),11,L"Game Mode");
             AppendMenuW(menu,MF_STRING|(footer_opt_msync?MF_CHECKED:0),12,L"MSync (Recommended)");
             AppendMenuW(menu,MF_STRING|(footer_opt_hud?MF_CHECKED:0),13,dxmt?L"Metal Performance HUD":L"Performance HUD");
@@ -239,6 +244,7 @@ static LRESULT CALLBACK footer_proc(HWND window,UINT message,WPARAM w,LPARAM l) 
             const char *command=selected==10?"toggle:metalfx":selected==11?"toggle:gamemode":selected==12?"toggle:msync":
                 selected==13?"toggle:hud":selected==14?"toggle:terminal":selected==15?"toggle:perflog":selected==20?"metalfx-scale:1.3":
                 selected==21?"metalfx-scale:1.5":selected==22?"metalfx-scale:2.0":
+                selected==30?"workers:0":selected==31?"workers:4":selected==32?"workers:3":selected==33?"workers:2":
                 (selected>=100 && selected<107)?scale_commands[selected-100]:NULL;
             if(command)footer_command(command);
         }

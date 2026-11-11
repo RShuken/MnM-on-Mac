@@ -454,6 +454,9 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             case .toggleHUD: togglePerformanceHUD()
             case .toggleTerminalLog: toggleTerminalLog()
             case .togglePerformanceLog: UserDefaults.standard.set(!performanceLogEnabled, forKey: Self.performanceLogKey)
+            case .workersDefault, .workers4, .workers3, .workers2:
+                UserDefaults.standard.set(action == .workers4 ? 4 : action == .workers3 ? 3 : action == .workers2 ? 2 : 0,
+                                          forKey: Self.gameWorkerThreadsKey)
             case .metalFXSharper, .metalFXBalanced, .metalFXCooler:
                 UserDefaults.standard.set(action == .metalFXSharper ? 1.3 : action == .metalFXCooler ? 2.0 : 1.5, forKey: Self.metalFXScaleKey)
                 if !metalFXUpscalingEnabled, selectedGraphicsBackend == .metal { toggleMetalFXUpscaling() }
@@ -1475,6 +1478,7 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             environment["MNM_GRAPHICS_HUD"] = performanceHUDEnabled ? "1" : "0"
             environment["MNM_METALFX_UPSCALING"] = metalFXUpscalingEnabled ? "1" : "0"
             environment["MNM_METALFX_SCALE"] = String(metalFXScale)
+            environment["MNM_JOB_WORKERS"] = gameWorkerThreads > 0 ? String(gameWorkerThreads) : nil
             // Performance Log: time every frame inside the game (MnMFrameStats.dylib) for this session.
             if performanceLogEnabled, let frameStats = Bundle.main.url(forResource: "MnMFrameStats", withExtension: "dylib") {
                 let logs = WinePaths.current.support.appendingPathComponent("Logs/perf", isDirectory: true)
@@ -1773,6 +1777,13 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         UserDefaults.standard.bool(forKey: performanceHUDKey)
     }
 
+    /// Unity job worker threads for the game: 0 = Unity's default (cores - 1), or 2/3/4.
+    static let gameWorkerThreadsKey = "MnMJobWorkers"
+    private var gameWorkerThreads: Int {
+        let value = UserDefaults.standard.integer(forKey: Self.gameWorkerThreadsKey)
+        return [2, 3, 4].contains(value) ? value : 0
+    }
+
     /// MetalFX render scale for DXMT: 1.3 sharper, 1.5 balanced (default), 2.0 cooler.
     static let metalFXScaleKey = "MnMMetalFXScale"
     private var metalFXScale: Double {
@@ -1786,7 +1797,8 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         return ["metalfx:" + flag(metalFXUpscalingEnabled), "mfxscale:\(Int((metalFXScale * 10).rounded()))",
                 "gamemode:" + flag(gameModeEnabled), "gamemodeok:" + flag(gameModeController.isAvailable),
                 "msync:" + flag(msyncEnabled), "hud:" + flag(performanceHUDEnabled),
-                "terminal:" + flag(terminalLogEnabled), "perflog:" + flag(performanceLogEnabled)].joined(separator: ",")
+                "terminal:" + flag(terminalLogEnabled), "perflog:" + flag(performanceLogEnabled),
+                "workers:\(gameWorkerThreads)"].joined(separator: ",")
     }
 
     private var metalFXUpscalingEnabled: Bool {

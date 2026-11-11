@@ -23,6 +23,7 @@ final class WindowsLauncherControls {
         case toggleHUD = "toggle:hud"
         case toggleTerminalLog = "toggle:terminal"
         case togglePerformanceLog = "toggle:perflog"
+        case workersDefault = "workers:0", workers4 = "workers:4", workers3 = "workers:3", workers2 = "workers:2"
         case metalFXSharper = "metalfx-scale:1.3"
         case metalFXBalanced = "metalfx-scale:1.5"
         case metalFXCooler = "metalfx-scale:2.0"

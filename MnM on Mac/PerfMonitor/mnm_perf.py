@@ -331,6 +331,9 @@ def graphics_backend():
             sc = re.search(r"MnMMetalFXScale\s*=\s*\"?([\d.]+)", prefs)
             scale = float(sc.group(1)) if sc else 1.5
             label += f" + MetalFX {scale if scale in (1.3, 1.5, 2.0) else 1.5}x"
+    w = re.search(r"MnMJobWorkers\s*=\s*(\d+)", prefs)
+    if w and w.group(1) in ("2", "3", "4"):
+        label += f" + {w.group(1)} workers"
     return label
 
 

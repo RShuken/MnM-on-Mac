@@ -128,7 +128,7 @@ enum WineRuntime {
     static func environment(paths: WinePaths, graphicsBackend: GraphicsBackend = .metal, showHUD: Bool = false, msyncEnabled: Bool = true, metalFXUpscaling: Bool = false,
                             metalFXScale: Double = 1.5, frameLimit: Int? = nil) -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
-        for key in Array(environment.keys) where key.hasPrefix("WINE") || key.hasPrefix("CX_") || key.hasPrefix("DYLD_") || key.hasPrefix("VK_") || key.hasPrefix("DXMT_") || key.hasPrefix("MTL_") || key.hasPrefix("METAL_") || key.hasPrefix("MNM_PLAY_") || key.hasPrefix("MNM_GRAPHICS_") || key == "MNM_METALFX_UPSCALING" || key == "MNM_METALFX_SCALE" || key == "MNM_MSYNC" || key == "MNM_TERMINAL_LOG" {
+        for key in Array(environment.keys) where key.hasPrefix("WINE") || key.hasPrefix("CX_") || key.hasPrefix("DYLD_") || key.hasPrefix("VK_") || key.hasPrefix("DXMT_") || key.hasPrefix("MTL_") || key.hasPrefix("METAL_") || key.hasPrefix("MNM_PLAY_") || key.hasPrefix("MNM_GRAPHICS_") || key == "MNM_METALFX_UPSCALING" || key == "MNM_METALFX_SCALE" || key == "MNM_JOB_WORKERS" || key == "MNM_MSYNC" || key == "MNM_TERMINAL_LOG" {
             environment.removeValue(forKey: key)
         }
         switch graphicsBackend {
@@ -512,7 +512,13 @@ enum GameSession {
         // Put Unity's renderer switch immediately after the executable. The game
         // also parses its own --token argument, so keeping the engine flags first
         // avoids a launcher wrapper accidentally consuming them.
-        let gameArguments = [game.appendingPathComponent("mnm.exe").path, graphicsAPIArgument, "--token", credential]
+        // Optional Unity job worker count (gear menu "Game Worker Threads"); Unity's
+        // default is one worker per reported core minus one (7 on an M2).
+        var engineArguments = [graphicsAPIArgument]
+        if let workers = Int(ProcessInfo.processInfo.environment["MNM_JOB_WORKERS"] ?? ""), (1...16).contains(workers) {
+            engineArguments += ["-job-worker-count", String(workers)]
+        }
+        let gameArguments = [game.appendingPathComponent("mnm.exe").path] + engineArguments + ["--token", credential]
         process.arguments = gameArguments
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
